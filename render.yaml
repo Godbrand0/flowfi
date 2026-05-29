@@ -2,6 +2,7 @@ services:
   - type: web
     name: flowfi-backend
     env: node
+    entrypoint: npm run start
     rootDir: backend
     autoDeploy: true
     buildCommand: npm install && npm run prisma:generate && npm run build
@@ -22,7 +23,7 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: info
-
+      
 databases:
   - name: flowfi-postgres
     databaseName: flowfi
