@@ -20,6 +20,10 @@ const { mockPrisma, mockSseService } = vi.hoisted(() => ({
     },
     streamEvent: {
       create: vi.fn(),
+      // `upsert` + `findUnique` back the worker's duplicate-event guard
+      // (soroban-event-worker.ts handleStreamCreated/handleStreamCancelled,
+      // ~L360/L558). Don't remove them or the indexer tests fail to load
+      // with "is not a function" — this regressed Backend CI in #527.
       upsert: vi.fn(),
       findUnique: vi.fn().mockResolvedValue(null),
       findMany: vi.fn().mockResolvedValue([]),
