@@ -112,7 +112,7 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
   // Tracking & Polling state (Issue #378)
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
-  const [timeout, setTimeoutError] = useState(false);
+  const [timeoutError, setTimeoutError] = useState(false);
   
   const router = useRouter();
 
@@ -492,10 +492,10 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
           {isPolling ? (
             <div className="flex flex-col items-center justify-center py-10">
               <h3 className="text-xl font-bold mb-8">
-                {timeout ? "Confirmation Timeout" : "Waiting for confirmation..."}
+                {timeoutError ? "Confirmation Timeout" : "Waiting for confirmation..."}
               </h3>
               
-              {!timeout ? (
+              {!timeoutError ? (
                 <>
                   <TransactionTracker 
                     steps={[
