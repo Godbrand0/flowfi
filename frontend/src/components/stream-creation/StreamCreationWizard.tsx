@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { hasValidPrecision } from "@/lib/amount";
+import { useModalDialog } from "@/hooks/useModalDialog";
 import { Stepper } from "../ui/Stepper";
 import { Button } from "../ui/Button";
 import { RecipientStep } from "./RecipientStep";
@@ -29,7 +30,8 @@ interface StreamCreationWizardProps {
   walletPublicKey?: string;
 }
 
-const CUSTOM_TEMPLATE_STORAGE_KEY = "flowfi.stream.wizard.custom-templates.v1";
+// Unified storage key shared with dashboard form (Issue #699)
+const CUSTOM_TEMPLATE_STORAGE_KEY = "flowfi.stream.templates.v1";
 
 const BUILT_IN_TEMPLATES: StreamTemplate[] = [
   {
@@ -116,28 +118,40 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
   
   const router = useRouter();
 
+  const dialogRef = useModalDialog({ onClose });
+
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const [walletBalanceLoading, setWalletBalanceLoading] = useState(false);
   const [walletBalanceError, setWalletBalanceError] = useState<string | null>(null);
 
   React.useEffect(() => {
+    let timer: NodeJS.Timeout;
     try {
       const stored = localStorage.getItem(CUSTOM_TEMPLATE_STORAGE_KEY);
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (!Array.isArray(parsed)) return;
-      const sanitized = parsed
-        .filter((item) => item && typeof item.id === "string" && typeof item.name === "string")
-        .map((item) => ({
-          id: item.id,
-          name: item.name,
-          description: item.description || "Saved custom template",
-          values: item.values || {},
-        } as StreamTemplate));
-      setCustomTemplates(sanitized);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const sanitized = parsed
+            .filter((item) => item && typeof item.id === "string" && typeof item.name === "string")
+            .map((item) => ({
+              id: item.id,
+              name: item.name,
+              description: item.description || "Saved custom template",
+              values: item.values || {},
+            } as StreamTemplate));
+          timer = setTimeout(() => {
+            setCustomTemplates(sanitized);
+          }, 0);
+        }
+      }
     } catch {
-      setCustomTemplates([]);
+      timer = setTimeout(() => {
+        setCustomTemplates([]);
+      }, 0);
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -149,16 +163,22 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
   }, [customTemplates]);
 
   React.useEffect(() => {
+    let cancelled = false;
+    let timer: NodeJS.Timeout;
+
     if (!walletPublicKey || !formData.token) {
-      setWalletBalance(null);
-      setWalletBalanceError(null);
-      setWalletBalanceLoading(false);
-      return;
+      timer = setTimeout(() => {
+        setWalletBalance(null);
+        setWalletBalanceError(null);
+        setWalletBalanceLoading(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
 
-    let cancelled = false;
-    setWalletBalanceLoading(true);
-    setWalletBalanceError(null);
+    timer = setTimeout(() => {
+      setWalletBalanceLoading(true);
+      setWalletBalanceError(null);
+    }, 0);
 
     fetchTokenBalanceDisplay(walletPublicKey, formData.token)
       .then((balance) => {
@@ -177,6 +197,7 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [walletPublicKey, formData.token]);
 
@@ -440,20 +461,12 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
     }
   };
 
-  // Handle Escape key to close
-  React.useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
-
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="stream-creation-wizard-title"
       onClick={(e) => {
         // Close on backdrop click
         if (e.target === e.currentTarget) {
@@ -461,9 +474,12 @@ export const StreamCreationWizard: React.FC<StreamCreationWizardProps> = ({
         }
       }}
     >
-      <div className="glass-card relative z-10 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-glass-border p-8">
+      <div
+        ref={dialogRef}
+        className="glass-card relative z-10 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-glass-border p-8"
+      >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold">Create Payment Stream</h2>
+          <h2 id="stream-creation-wizard-title" className="text-2xl font-bold">Create Payment Stream</h2>
           <button
             type="button"
             onClick={onClose}

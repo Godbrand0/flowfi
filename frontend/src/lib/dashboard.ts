@@ -1,4 +1,6 @@
-import type { BackendStream, BackendStreamEvent } from "./api-types";
+import type { BackendStream } from "./api-types";
+import { getStreamsEndpointCandidates, toTokenAmount } from "./api/_shared";
+import { TOKEN_ADDRESSES } from "./soroban";
 
 export interface ActivityItem {
   id: string;
@@ -42,34 +44,35 @@ export interface DashboardAnalyticsMetric {
   unavailableText: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/v1";
-
-const STROOPS_DIVISOR = 1e7;
-
-function toTokenAmount(raw: string): number {
-  return parseFloat(raw) / STROOPS_DIVISOR;
-}
 
 function shortenAddress(address: string): string {
   if (!address || address.length < 10) return address;
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-function getStreamsEndpointCandidates(): string[] {
-  const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/+$/, "");
-  const candidates = new Set<string>();
+/**
+ * Resolves a token contract address to its symbol (XLM/USDC/EURC), falling
+ * back to a shortened address when the token is unknown.
+ */
+function resolveTokenLabel(tokenAddress: string): string {
+  const entry = Object.entries(TOKEN_ADDRESSES).find(
+    ([, address]) => address === tokenAddress,
+  );
 
-  if (baseUrl.endsWith("/api/v1") || baseUrl.endsWith("/v1")) {
-    candidates.add(`${baseUrl}/streams`);
-  } else if (baseUrl.endsWith("/api")) {
-    candidates.add(`${baseUrl}/v1/streams`);
-    candidates.add(`${baseUrl.replace(/\/api$/, "")}/v1/streams`);
-  } else {
-    candidates.add(`${baseUrl}/api/v1/streams`);
-    candidates.add(`${baseUrl}/v1/streams`);
-  }
+  return entry?.[0] ?? shortenAddress(tokenAddress);
+}
 
-  return [...candidates];
+/**
+ * Derives the display status from the backend flags. A paused stream reads
+ * "Paused"; an active one "Active". An inactive stream is "Cancelled" when a
+ * CANCELLED event is present, otherwise it ran to completion ("Completed").
+ */
+function mapStreamStatus(s: BackendStream): Stream["status"] {
+  if (s.isPaused) return "Paused";
+  if (s.isActive) return "Active";
+
+  const wasCancelled = s.events?.some((e) => e.eventType === "CANCELLED") ?? false;
+  return wasCancelled ? "Cancelled" : "Completed";
 }
 
 async function fetchStreams(
@@ -103,7 +106,7 @@ async function fetchStreams(
 /**
  * Maps a backend stream object to the frontend Stream interface.
  */
-function mapBackendStreamToFrontend(s: BackendStream, counterparty: string): Stream {
+export function mapBackendStreamToFrontend(s: BackendStream, counterparty: string): Stream {
   const deposited = toTokenAmount(s.depositedAmount);
   const withdrawn = toTokenAmount(s.withdrawnAmount);
   const ratePerSecond = toTokenAmount(s.ratePerSecond);
@@ -112,8 +115,8 @@ function mapBackendStreamToFrontend(s: BackendStream, counterparty: string): Str
     id: s.streamId.toString(),
     recipient: shortenAddress(counterparty),
     amount: deposited,
-    token: "TOKEN",
-    status: s.isActive ? "Active" : "Completed",
+    token: resolveTokenLabel(s.tokenAddress),
+    status: mapStreamStatus(s),
     deposited,
     withdrawn,
     date: new Date(s.startTime * 1000).toISOString().split("T")[0],
@@ -192,22 +195,6 @@ export async function fetchDashboardData(publicKey: string): Promise<DashboardSn
     };
   } catch (error) {
     console.error("Dashboard data fetch error:", error);
-    throw error;
-  }
-}
-
-/**
- * Fetches activity history for a given public key.
- */
-export async function fetchUserEvents(publicKey: string): Promise<BackendStreamEvent[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/users/${publicKey}/events`);
-    if (!res.ok) {
-      throw new Error("Failed to fetch user events from backend.");
-    }
-    return await res.json();
-  } catch (error) {
-    console.error("User events fetch error:", error);
     throw error;
   }
 }
