@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@/context/wallet-context";
 import { ActivityHistory } from "@/components/dashboard/ActivityHistory";
 import { BackendStreamEvent } from "@/lib/api-types";
@@ -32,7 +32,7 @@ export default function ActivityPage() {
   const [hasMore, setHasMore] = useState(true);
 
   const fetchActivity = useCallback(
-    async (pageNum: number, tab: string, append: boolean = false) => {
+    async (pageNum: number, tab: string, append: boolean = false, signal?: AbortSignal) => {
       if (!session?.publicKey) return;
       setLoading(true);
 
@@ -43,7 +43,7 @@ export default function ActivityPage() {
           `${API_BASE_URL}/v1/events?address=${encodeURIComponent(session.publicKey)}` +
           `&page=${pageNum}&limit=${PAGE_SIZE}${typeQuery}`;
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         if (!response.ok) {
           throw new Error(`Failed to fetch activity (${response.status})`);
         }
@@ -62,6 +62,7 @@ export default function ActivityPage() {
           setHasMore(next.length === PAGE_SIZE);
         }
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         console.error("Failed to fetch activity:", error);
         if (!append) setEvents([]);
         setHasMore(false);
@@ -69,14 +70,17 @@ export default function ActivityPage() {
         setLoading(false);
       }
     },
-    [session?.publicKey],
+    [session],
   );
 
   useEffect(() => {
-    if (status === "connected") {
-      setPage(1);
-      fetchActivity(1, activeTab, false);
-    }
+    if (status !== "connected") return;
+    const controller = new AbortController();
+    const initLoad = async () => {
+      await fetchActivity(1, activeTab, false, controller.signal);
+    };
+    void initLoad();
+    return () => controller.abort();
   }, [activeTab, status, fetchActivity]);
 
   const loadMore = () => {
@@ -134,7 +138,10 @@ export default function ActivityPage() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              setPage(1);
+            }}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap border ${
               activeTab === tab.id
                 ? "bg-accent text-white border-accent"

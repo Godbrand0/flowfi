@@ -2,7 +2,6 @@
 import { NotificationDropdown } from "./NotificationDropdown";
 import Link from "next/link";
 import { useWallet } from "@/context/wallet-context";
-import { Button } from "./ui/Button";
 import { ModeToggle } from "./ModeToggle";
 import { WalletButton } from "./wallet/WalletButton";
 
@@ -52,9 +51,6 @@ export const Navbar = () => {
         {status === "connected" && session?.publicKey && (
           <NotificationDropdown publicKey={session.publicKey} />
         )}
-        <Button variant="ghost" className="hidden sm:inline-flex">
-          Log In
-        </Button>
         <WalletButton />
       </div>
     </nav>
