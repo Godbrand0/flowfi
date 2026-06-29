@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { requireAuth } from '../../../middleware/auth.js';
 import oldStreamRoutes from '../stream.routes.js';
 const router = Router();
 
